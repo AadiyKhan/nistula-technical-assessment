@@ -193,7 +193,7 @@ All 3 tests passing confirms end-to-end workflow.
 - Query: "Is villa available April 20-24?"
 - Type: `pre_sales_availability` (base 0.91)
 - Claude used: +0.03 → 0.94
-- Final: `auto_send` (≥0.85) ✅
+- Final: `auto_send` (≥0.85) 
 
 ---
 
