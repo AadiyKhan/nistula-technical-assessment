@@ -1,29 +1,32 @@
 # Nistula Guest Message Handler
 
-> An intelligent hospitality API that transforms guest inquiries into prioritized support workflows using AI-powered classification and Claude for smart reply drafting.
+> A database-backed hospitality operations platform that transforms guest inquiries into prioritized support workflows using AI-powered classification and Gemini for smart reply drafting.
 
 ## Overview
 
-This FastAPI application powers Nistula's unified messaging platform. It ingests guest messages from multiple channels (WhatsApp, Booking.com, Airbnb, Instagram, direct), classifies them intelligently, drafts contextual replies using Claude, and routes them to the right team member based on confidence scoring.
+This FastAPI application now powers a multi-property unified messaging platform. It ingests guest messages from multiple channels (WhatsApp, Booking.com, Airbnb, Instagram, direct), persists guests, conversations, messages, and audit events, drafts contextual replies using Gemini, and routes them to the right team member based on confidence scoring.
 
 **Built for**: Real-time guest support at scale  
-**Tech Stack**: Python 3.12 + FastAPI + Claude API + PostgreSQL  
-**Status**: Production-ready with comprehensive test coverage
+**Tech Stack**: Python 3.12 + FastAPI + SQLAlchemy + SQLite/PostgreSQL + Alembic + Redis/Celery + Gemini API
+**Status**: Production-ready foundation with comprehensive test coverage
 
 ---
 
 ## What's Included
 
 ```
-├── app/                      # FastAPI webhook handler & AI integration
-│   ├── main.py              # REST endpoint & orchestration 
+├── app/                      # FastAPI app, ORM models, and service layers
+│   ├── main.py              # API routes and orchestration 
+│   ├── db.py                # SQLAlchemy engine/session helpers
+│   ├── models.py            # Guests, properties, conversations, messages
 │   ├── schemas.py           # Pydantic models (validation)
 │   ├── classification.py    # Query type detection & confidence scoring
-│   ├── claude_client.py     # Claude API client with smart fallbacks
+│   ├── gemini_client.py     # Gemini API client with smart fallbacks
+│   ├── repositories/        # Database access helpers
+│   ├── services/            # Message and dashboard workflows
 │   └── config.py            # Environment & settings management
 ├── schema.sql               # PostgreSQL design (guests, messages, audit trail)
 ├── tests/                   # Test suite with 3 core scenarios
-├── thinking.md              # Design thinking responses
 └── requirements.txt         # Dependencies
 ```
 
@@ -50,8 +53,16 @@ pip install -r requirements.txt
 # Copy template
 cp .env.example .env
 
-# Add your Claude API key (get one at console.anthropic.com)
-export ANTHROPIC_API_KEY="sk-ant-api03-..."
+# Add your Gemini API key (from Google AI Studio or Vertex AI)
+export GEMINI_API_KEY="your-api-key"
+
+# Optional: point to PostgreSQL instead of local SQLite
+export DATABASE_URL="postgresql+psycopg://user:password@localhost:5432/nistula"
+
+# Optional: enable Redis/Celery for background notification jobs
+export REDIS_URL="redis://localhost:6379/0"
+export CELERY_BROKER_URL="redis://localhost:6379/0"
+export CELERY_RESULT_BACKEND="redis://localhost:6379/1"
 ```
 
 ### 3. **Run the API**
@@ -92,6 +103,50 @@ Receive and process a guest message from any channel.
 }
 ```
 
+### GET `/properties`
+
+Lists the active properties currently served by the platform.
+
+### GET `/dashboard/summary`
+
+Returns a lightweight operations summary for the current day, including message volume, complaints, auto-send rate, and active conversations.
+
+### GET `/dashboard`
+
+Renders the professional operations dashboard with summary cards, property portfolio, recent activity, and live platform signals.
+
+### GET `/conversations/{conversation_id}/messages`
+
+Returns the recent conversation thread for a guest/property conversation.
+
+### POST `/auth/login`
+
+Returns a JWT for demo users such as `owner@nistula.local`.
+
+### GET `/auth/me`
+
+Returns the authenticated user profile.
+
+### GET `/analytics/overview`
+
+Returns message volume, confidence, channel mix, and property usage. Requires `owner` or `manager` role.
+
+### GET `/users`
+
+Lists demo staff users. Requires `owner` or `manager` role.
+
+### GET `/ws/notifications`
+
+Streams live message events to staff dashboards using the JWT passed as `token`.
+
+### GET `/metrics`
+
+Emits lightweight Prometheus-style metrics for operational monitoring.
+
+### POST `/integrations/{channel}/webhook`
+
+Accepts inbound channel payloads from `whatsapp`, `booking_com`, `airbnb`, or `email`, normalizes them, and routes them through the shared AI workflow.
+
 **Try it:**
 ```bash
 curl -X POST http://127.0.0.1:8000/webhook/message \
@@ -119,11 +174,13 @@ Detects query intent using pattern matching:
 - `complaint` — "The AC is broken"
 - `general_enquiry` — Anything else
 
-### 2. **Claude Reply Drafting**
-Sends normalized message + property context to Claude, which generates a guest-friendly response:
+### 2. **Gemini Reply Drafting**
+Sends normalized message, property context from the database, and recent conversation history to Gemini, which generates a guest-friendly response:
 - Property facts (Villa B1, 3BR, INR 18k/night, etc.)
 - Query type & guest context
 - Returns professional, on-brand reply
+
+The service writes both inbound and outbound records to the database so the next message has context.
 
 ### 3. **Confidence Scoring**
 Heuristic model determines certainty and routes accordingly:
@@ -146,13 +203,25 @@ complaint → escalate (always)
 ```
 
 ### 4. **Graceful Fallback**
-If Claude API is unavailable, reply falls back to deterministic templates keyed by query type. System never fails silently.
+If Gemini API is unavailable, reply falls back to deterministic templates keyed by query type. System never fails silently.
+
+### 5. **Persistence Layer**
+The app stores:
+- guests
+- users
+- reservations
+- conversations
+- inbound messages
+- outbound drafted replies
+- message events for audit history
+
+The app also includes Alembic migrations, a queue-style notification hub with optional Celery fan-out, structured request logging, JWT authentication, RBAC, a live websocket stream, analytics/metrics endpoints, and normalized external channel adapters.
 
 ---
 
 ## Testing
 
-Run the test suite to validate all three core scenarios:
+Run the test suite to validate the webhook workflow and database-backed platform foundation:
 
 ```bash
 pytest tests/test_webhook.py -v
@@ -161,7 +230,7 @@ pytest tests/test_webhook.py -v
 **Test Coverage:**
 - Availability inquiry → classified, drafted, auto-sent
 - Pricing inquiry → classified, drafted, auto-sent
-- Complaint escalation → classified, escalated with human-friendly response  
+- Complaint escalation → classified, escalated with human-friendly response
 
 All 3 tests passing confirms end-to-end workflow.
 
@@ -171,8 +240,9 @@ All 3 tests passing confirms end-to-end workflow.
 
 | Variable | Required | Default | Notes |
 |---|---|---|---|
-| `ANTHROPIC_API_KEY` | Yes | — | Claude API key (never commit!) |
-| `ANTHROPIC_MODEL` | Optional | `claude-sonnet-4-20250514` | Model version |
+| `GEMINI_API_KEY` | Yes | — | Gemini API key (never commit!) |
+| `GEMINI_MODEL` | Optional | `gemini-3-flash` | Model version |
+| `DATABASE_URL` | No | `sqlite:///./nistula.db` | SQLite by default, PostgreSQL ready |
 | `APP_ENV` | Optional | `development` | Environment label for logs |
 
 **Never commit `.env`** — use `.env.example` as a template.
@@ -184,7 +254,7 @@ All 3 tests passing confirms end-to-end workflow.
 ### Scoring Factors
 
 1. **Base score by query type** (70–91%)
-2. **+3% if Claude was used** (vs fallback)
+2. **+3% if Gemini was used** (vs fallback)
 3. **+2% if message is detailed** (≥12 words)
 4. **+1% if reply generated successfully**
 5. **Capped at 0.59 for complaints** (never auto-send critical issues)
@@ -192,21 +262,22 @@ All 3 tests passing confirms end-to-end workflow.
 **Example:**
 - Query: "Is villa available April 20-24?"
 - Type: `pre_sales_availability` (base 0.91)
-- Claude used: +0.03 → 0.94
+- Gemini used: +0.03 → 0.94
 - Final: `auto_send` (≥0.85) 
 
 ---
 
-## Database Schema
+## Platform Data
 
-See [schema.sql](schema.sql) for the PostgreSQL design:
+The application uses SQLAlchemy models mirroring the design in [schema.sql](schema.sql):
+- **properties** — multi-property context used for reply drafting
 - **guests** — unified guest profiles across all channels
 - **reservations** — bookings linked to guests
 - **conversations** — channel-specific threads
 - **messages** — inbound/outbound with AI metadata
 - **message_events** — audit trail (drafted, edited, sent, escalated)
 
-Key design: Keeps operational state on messages for fast reads + maintains full event history for compliance.
+Key design: keeps operational state on messages for fast reads while preserving full event history for compliance and debugging.
 
 ---
 
@@ -225,7 +296,7 @@ Key design: Keeps operational state on messages for fast reads + maintains full 
 - Fallback to `general_enquiry` is safe
 
 ### Why Fallback Replies?
-- Claude API can fail or rate-limit
+- Gemini API can fail or rate-limit
 - Fallback templates are deterministic
 - Guests still get a response within SLAs
 - No silent failures
@@ -260,19 +331,10 @@ black app/ tests/
 
 ---
 
-## Part 3 — Design Thinking
-
-See [thinking.md](thinking.md) for detailed responses to:
-- **A** — Immediate response to 3am hot water complaint
-- **B** — Full system design & escalation workflow
-- **C** — Pattern detection for recurring issues
-
----
-
 ## Notes
 
 - API key stored in `.env` (never committed)
-- Graceful degradation if Claude is unavailable
+- Graceful degradation if Gemini is unavailable
 - Full audit trail via `message_events` table
 - CORS enabled for frontend integration
 - Type hints throughout (Python 3.12+)
@@ -281,7 +343,7 @@ See [thinking.md](thinking.md) for detailed responses to:
 
 ## Questions?
 
-For technical issues, check [thinking.md](thinking.md) or review the well-commented code in `app/main.py`.
+For technical issues, review the well-commented code in `app/main.py` and the service layers under `app/services/`.
 
 ---
 

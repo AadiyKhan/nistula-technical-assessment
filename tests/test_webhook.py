@@ -15,16 +15,16 @@ class DummyDraftResult(SimpleNamespace):
 
 
 def _settings():
-    return SimpleNamespace(anthropic_api_key="test-key", anthropic_model="claude-sonnet-4-20250514")
+    return SimpleNamespace(gemini_api_key="test-key", gemini_model="gemini-3-flash")
 
 
 def test_availability_message(monkeypatch):
     monkeypatch.setattr("app.main.get_settings", _settings)
     monkeypatch.setattr(
-        "app.main.ClaudeDraftClient.draft_reply",
-        lambda self, normalized_message: DummyDraftResult(
+        "app.main.GeminiDraftClient.draft_reply",
+        lambda self, normalized_message, **kwargs: DummyDraftResult(
             drafted_reply=f"Hi {normalized_message.guest_name.split()[0]}! Yes, Villa B1 is available.",
-            used_claude=True,
+            used_gemini=True,
         ),
     )
 
@@ -49,10 +49,10 @@ def test_availability_message(monkeypatch):
 def test_pricing_message(monkeypatch):
     monkeypatch.setattr("app.main.get_settings", _settings)
     monkeypatch.setattr(
-        "app.main.ClaudeDraftClient.draft_reply",
-        lambda self, normalized_message: DummyDraftResult(
+        "app.main.GeminiDraftClient.draft_reply",
+        lambda self, normalized_message, **kwargs: DummyDraftResult(
             drafted_reply="Hi! The base rate is INR 18,000 per night.",
-            used_claude=True,
+            used_gemini=True,
         ),
     )
 
@@ -74,7 +74,7 @@ def test_pricing_message(monkeypatch):
 
 
 def test_complaint_escalates(monkeypatch):
-    monkeypatch.setattr("app.main.get_settings", lambda: SimpleNamespace(anthropic_api_key=None, anthropic_model="claude-sonnet-4-20250514"))
+    monkeypatch.setattr("app.main.get_settings", lambda: SimpleNamespace(gemini_api_key=None, gemini_model="gemini-3-flash"))
 
     payload = {
         "source": "whatsapp",

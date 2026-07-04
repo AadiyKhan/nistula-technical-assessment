@@ -51,3 +51,4 @@ htmlcov/
 # Project specific
 .env.production
 node_modules/
+nistula.db

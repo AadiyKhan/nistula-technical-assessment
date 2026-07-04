@@ -19,6 +19,18 @@ CREATE TABLE guests (
     CONSTRAINT guests_phone_unique UNIQUE (phone)
 );
 
+CREATE TABLE users (
+    user_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    username TEXT NOT NULL UNIQUE,
+    full_name TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT users_role_check CHECK (role IN ('owner', 'manager', 'support', 'housekeeping'))
+);
+
 CREATE TABLE reservations (
     reservation_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     booking_ref TEXT NOT NULL UNIQUE,
@@ -107,6 +119,13 @@ CREATE TABLE message_events (
 );
 
 CREATE INDEX idx_message_events_message_id ON message_events (message_id, created_at DESC);
+
+CREATE TABLE notification_events (
+    notification_event_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_type TEXT NOT NULL,
+    payload JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
 -- Hardest design decision:
 -- I chose to keep the operational state on messages while also adding message_events for history.
